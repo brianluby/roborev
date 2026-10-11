@@ -267,7 +267,14 @@ func TestPanelSweepRecoversRejectedWorkerFailure(t *testing.T) {
 			_, err = tc.DB.Exec(`DROP TRIGGER reject_worker_write`)
 			require.NoError(t, err)
 
-			server.sweepStuckPanels(context.Background())
+			// The worker can already be claiming its next job in SQLite after
+			// announcing the probe's completion. A sweep skips that claim gap;
+			// retry until the database operation finishes and recovery can run.
+			require.Eventually(t, func() bool {
+				server.sweepStuckPanels(context.Background())
+				job, err := tc.DB.GetJobByID(members[0].ID)
+				return err == nil && job.Status == storage.JobStatusFailed
+			}, 10*time.Second, 10*time.Millisecond)
 
 			job := tc.assertJobStatus(t, members[0].ID, storage.JobStatusFailed)
 			assert.Equal(before.RetryCount, job.RetryCount)
@@ -339,7 +346,10 @@ func TestStopPanelSweepWaitsForInFlightSweep(t *testing.T) {
 			<-release
 		}}
 		tc.Pool.broadcaster = b
-		server := &Server{db: tc.DB, workerPool: tc.Pool, broadcaster: b}
+		server := &Server{
+			db: tc.DB, workerPool: tc.Pool, broadcaster: b,
+			configWatcher: NewConfigWatcher("", tc.Pool.cfgGetter.Config(), b, nil),
+		}
 		server.startPanelSweep(context.Background())
 		time.Sleep(panelSweepInterval)
 		event := <-entered
@@ -378,8 +388,8 @@ func TestStopCancelsPanelSweepBeforeWorkerDrain(t *testing.T) {
 				server, db, tmpDir := newTestServer(t)
 				release := make(chan struct{})
 				releaseWork := sync.OnceFunc(func() { close(release) })
-				defer releaseWork()
 				entered := make(chan struct{})
+				notifyEntered := sync.OnceFunc(func() { close(entered) })
 				var repo *storage.Repo
 				if test.blockedSweep {
 					var err error
@@ -393,22 +403,19 @@ func TestStopCancelsPanelSweepBeforeWorkerDrain(t *testing.T) {
 					require.Equal(t, orphan.ID, claimed.ID)
 					// The sweep announces failures through the pool's broadcaster.
 					observer := &observingBroadcaster{Broadcaster: server.broadcaster, observe: func(Event) {
-						entered <- struct{}{}
+						notifyEntered()
 						<-release
 					}}
 					server.workerPool = NewWorkerPool(db, server.configWatcher, 1, observer, nil, nil)
 				}
 				server.workerPool.Start()
 				defer server.workerPool.Stop()
-				var queued *storage.ReviewJob
+				defer releaseWork()
 				if test.blockedSweep {
 					synctest.Wait()
 					server.startPanelSweep(context.Background())
 					time.Sleep(panelSweepInterval)
 					<-entered
-					var err error
-					queued, err = db.EnqueueJob(storage.EnqueueOpts{RepoID: repo.ID, Agent: "test", GitRef: "deadbeef"})
-					require.NoError(t, err)
 				} else {
 					server.startPanelSweep(context.Background())
 					server.workerPool.wg.Go(func() { <-release })
@@ -417,9 +424,20 @@ func TestStopCancelsPanelSweepBeforeWorkerDrain(t *testing.T) {
 				sweepDone := server.sweepDone
 				stopped := make(chan error, 1)
 				go func() { stopped <- server.Stop() }()
+				// Stop writes the drain flag to SQLite before canceling workers.
+				// Wait for cancellation itself, not for synctest quiescence while
+				// that external database operation may still be in progress.
+				select {
+				case <-server.workerPool.stopCtx.Done():
+				case err := <-stopped:
+					require.NoError(t, err)
+				}
 				synctest.Wait()
 				require.ErrorIs(t, server.workerPool.stopCtx.Err(), context.Canceled)
 				if test.blockedSweep {
+					queued, err := db.EnqueueJob(storage.EnqueueOpts{RepoID: repo.ID, Agent: "test", GitRef: "deadbeef"})
+					require.NoError(t, err)
+					synctest.Wait()
 					job, err := db.GetJobByID(queued.ID)
 					require.NoError(t, err)
 					assert.Equal(t, storage.JobStatusQueued, job.Status)
@@ -431,8 +449,8 @@ func TestStopCancelsPanelSweepBeforeWorkerDrain(t *testing.T) {
 					default:
 					}
 					assert.True(t, sweepFinished, "panel sweep must finish before the worker drain")
-					assert.Empty(t, stopped)
 				}
+				assert.Empty(t, stopped)
 				releaseWork()
 				require.NoError(t, <-stopped)
 			})

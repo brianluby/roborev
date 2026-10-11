@@ -72,6 +72,7 @@ type Server struct {
 	allowWebCompilationStub bool
 	webDevOrigin            string
 	syncWorker              *storage.SyncWorker
+	syncEnabledAtStart      bool // [sync] needs a restart; reloads leave the worker as started
 	ciPoller                *CIPoller
 	hookRunner              *HookRunner
 	errorLog                *ErrorLog
@@ -195,6 +196,7 @@ func newServerWithLogs(
 
 	s := &Server{
 		authKey:            cfg.AuthKey,
+		syncEnabledAtStart: cfg.Sync.Enabled,
 		goalGate:           newGoalGate(),
 		daemonTLS:          cfg.DaemonTLS,
 		db:                 db,
@@ -533,7 +535,10 @@ func (s *Server) startPanelSweep(ctx context.Context) {
 	s.sweepDone = done
 	go func() {
 		defer close(done)
-		s.runPanelSweep(sweepCtx, panelSweepInterval)
+		var maintenance sync.WaitGroup
+		maintenance.Go(func() { s.runPanelSweep(sweepCtx, panelSweepInterval) })
+		maintenance.Go(func() { s.runRetention(sweepCtx, retentionInterval) })
+		maintenance.Wait()
 	}()
 }
 
@@ -1838,6 +1843,9 @@ func (s *Server) humaGetReview(
 	review.WebURL = s.reviewBrowserURL(review.JobID)
 	if review.Job != nil {
 		review.Job.WebURL = review.WebURL
+		if review.Job.IsFixJob() {
+			review.Prompt = prompt.DisplayFixPlanPrompt(review.Prompt)
+		}
 	}
 	return &GetReviewOutput{Body: review}, nil
 }
@@ -3321,6 +3329,12 @@ func (s *Server) humaBatchJobs(
 		return nil, huma.Error500InternalServerError(
 			fmt.Sprintf("batch fetch: %v", err),
 		)
+	}
+
+	for _, result := range results {
+		if result.Job.IsFixJob() && result.Review != nil {
+			result.Review.Prompt = prompt.DisplayFixPlanPrompt(result.Review.Prompt)
+		}
 	}
 
 	resp := &BatchJobsOutput{}

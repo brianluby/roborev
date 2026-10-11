@@ -236,6 +236,7 @@ CREATE INDEX IF NOT EXISTS idx_commits_sha ON commits(sha);
 type DB struct {
 	*sql.DB
 	analytics analyticsStmts
+	attempts  jobAttempts
 }
 
 // Close closes the cached prepared statements and then the database.
@@ -254,6 +255,10 @@ func Open(dbPath string) (*DB, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)
+	}
+
+	if err := registerContentFunctions(); err != nil {
+		return nil, err
 	}
 
 	// Open with WAL mode and busy timeout.
@@ -327,6 +332,9 @@ func OpenReadOnly(dbPath string) (*DB, error) {
 	query.Add("_pragma", "busy_timeout(30000)")
 	dsn.RawQuery = query.Encode()
 
+	if err := registerContentFunctions(); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("sqlite", dsn.String())
 	if err != nil {
 		return nil, fmt.Errorf("open database read-only: %w", err)

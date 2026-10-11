@@ -497,9 +497,8 @@ func (wp *WorkerPool) handleUpdateInterruptionLocked(
 	return requeued
 }
 
-// runAttemptTransition holds the read side of the update cutover barrier for
-// the marker check and the complete attempt-scoped transition. It returns true
-// when update interruption handled the attempt instead of running transition.
+// runAttemptTransition guards the claim and its side effects against update
+// cutover and sync replacement. It returns true when the transition was skipped.
 func (wp *WorkerPool) runAttemptTransition(
 	workerID string, job *storage.ReviewJob, transition func(),
 ) bool {
@@ -508,8 +507,11 @@ func (wp *WorkerPool) runAttemptTransition(
 	if wp.handleUpdateInterruptionLocked(workerID, job) {
 		return true
 	}
-	transition()
-	return false
+	ran, err := wp.db.RunJobAttempt(job, workerID, transition)
+	if err != nil {
+		log.Printf("[%s] Job %d: validate attempt: %v", workerID, job.ID, err)
+	}
+	return !ran
 }
 
 // IsJobPendingCancel reports whether a job is in the pendingCancels set.
@@ -908,7 +910,10 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 	timeoutDuration := jobTimeoutDuration
 	var planningTimeout time.Duration
 	planningPrompt := ""
-	storedPromptValue := job.Prompt
+	// A prebuilt prompt stored by an earlier attempt already ends with the
+	// member instructions; drop them so this attempt appends them once.
+	memberSuffix := memberInstructionSuffix(job)
+	storedPromptValue := strings.TrimSuffix(job.Prompt, memberSuffix)
 	var planningDecodeErr error
 	if job.IsFixJob() {
 		planningPrompt, storedPromptValue, _, planningDecodeErr = prompt.DecodeFixPlan(job.Prompt)
@@ -921,6 +926,18 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
+	releaseAttempt, err := wp.db.StartJobAttempt(ctx, job, workerID, cancel)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("[%s] Job %d: register attempt: %v", workerID, job.ID, err)
+			wp.failOrRetryContext(ctx, workerID, job, job.Agent, fmt.Sprintf("register attempt: %v", err))
+		}
+		// This claim never registered: it must release only its database
+		// ownership, leaving the previous worker's handler and output intact.
+		wp.releaseCanceledClaim(workerID, job.ID)
+		return
+	}
+	defer releaseAttempt()
 
 	// Register for cancellation tracking
 	deadline, _ := ctx.Deadline()
@@ -929,6 +946,14 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 	// Every attempt owns the lifetime of its output stream, including paths that
 	// fail before an agent starts and synthesis paths that do not invoke one.
 	defer wp.outputBuffers.CloseJob(job.ID)
+	if ctx.Err() != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			wp.failOrRetryContext(ctx, workerID, job, job.Agent, "job timed out waiting for previous attempt cleanup")
+		} else {
+			wp.finishCanceledAttempt(workerID, job, job.Agent, job.WorktreePath)
+		}
+		return
+	}
 
 	jobUUID := uuid.Nil()
 	if job.UUID != nil {
@@ -1141,16 +1166,23 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 		return
 	}
 	// Panel members carry trusted reviewer instructions resolved at enqueue
-	// time. Append them after every prompt path (snapshot/dirty/range) and
-	// before promptToPersist defaults, so they persist and show in the view.
-	reviewPrompt += memberInstructionSuffix(job)
+	// time. Append them after every prompt path (snapshot/dirty/range/
+	// prebuilt) so the agent and the stored prompt both include them.
+	reviewPrompt += memberSuffix
 	if promptToPersist == "" {
 		promptToPersist = reviewPrompt
+	} else {
+		promptToPersist = strings.TrimSuffix(promptToPersist, memberSuffix) + memberSuffix
 	}
 
-	// Save the prompt so it can be viewed while job is running
-	if err := wp.db.SaveJobPrompt(job.ID, promptToPersist); err != nil {
+	// The job's stored prompt is the only copy the prompt views read, so a
+	// failed save retries the job instead of running the agent without it.
+	if saved, err := wp.db.SaveJobPromptForAttempt(job, workerID, promptToPersist); err != nil {
 		log.Printf("[%s] Error saving prompt: %v", workerID, err)
+		wp.failOrRetryContext(ctx, workerID, job, job.Agent, fmt.Sprintf("save prompt: %v", err))
+		return
+	} else if !saved {
+		return
 	}
 
 	// Get the configured job agent. Backup failover is handled explicitly by
@@ -1411,22 +1443,7 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 			if wp.handleUpdateInterruption(ctx, workerID, job) {
 				return
 			}
-			log.Printf("[%s] Job %d was canceled", workerID, job.ID)
-			if !wp.cancellationEventOwnedByCaller(job.ID) {
-				wp.broadcaster.Broadcast(Event{
-					Type:         "review.canceled",
-					TS:           time.Now(),
-					JobID:        job.ID,
-					Repo:         job.RepoPath,
-					RepoName:     job.RepoName,
-					SHA:          job.GitRef,
-					Branch:       job.HookBranch(),
-					Agent:        agentName,
-					WorktreePath: eventWorktreePath,
-				})
-			}
-			// Member canceled is terminal — release the panel synthesis.
-			wp.releaseIfPanelMember(job)
+			wp.finishCanceledAttempt(workerID, job, agentName, eventWorktreePath)
 			return // Job already marked as canceled in DB, nothing more to do
 		}
 		if errors.Is(err, context.DeadlineExceeded) || ctx.Err() == context.DeadlineExceeded {
@@ -1476,14 +1493,14 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 		// CompleteJob/CompleteFixJob is a no-op (returns nil) if the job was
 		// canceled between agent finish and now.
 		if job.IsFixJob() {
-			if err := wp.db.CompleteFixJob(job.ID, agentName, reviewPrompt, output, fixPatch); err != nil {
+			if err := wp.db.CompleteFixJob(job.ID, agentName, output, fixPatch); err != nil {
 				log.Printf("[%s] Error storing fix review: %v", workerID, err)
 				return
 			}
 		} else if (job.IsReviewJob() || job.JobType == storage.JobTypeCompact) &&
 			agentReview.Verdict != storage.VerdictUnknown {
 			if err := wp.db.CompleteJobResult(
-				job.ID, agentName, reviewPrompt, storage.ReviewCompletion{
+				job.ID, agentName, storage.ReviewCompletion{
 					Output:           output,
 					Verdict:          agentReview.Verdict,
 					StructuredOutput: agentReview.StructuredOutput,
@@ -1494,7 +1511,7 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 				log.Printf("[%s] Error storing review verdict: %v", workerID, err)
 				return
 			}
-		} else if err := wp.db.CompleteJobResult(job.ID, agentName, reviewPrompt, storage.ReviewCompletion{
+		} else if err := wp.db.CompleteJobResult(job.ID, agentName, storage.ReviewCompletion{
 			Output:       output,
 			FileCoverage: fileCoverage,
 		}); err != nil {
@@ -1573,11 +1590,57 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 	})
 }
 
+// finishCanceledAttempt emits cancellation only for the claim that still owns
+// the row. A newer pulled attempt has its own result and terminal events.
+func (wp *WorkerPool) finishCanceledAttempt(workerID string, job *storage.ReviewJob, agentName, eventWorktreePath string) {
+	wp.runAttemptTransition(workerID, job, func() {
+		log.Printf("[%s] Job %d was canceled", workerID, job.ID)
+		if !wp.cancellationEventOwnedByCaller(job.ID) {
+			wp.broadcaster.Broadcast(Event{
+				Type:         jobEventType(job, "canceled"),
+				TS:           time.Now(),
+				JobID:        job.ID,
+				Repo:         job.RepoPath,
+				RepoName:     job.RepoName,
+				SHA:          job.GitRef,
+				Branch:       job.HookBranch(),
+				Agent:        agentName,
+				WorktreePath: eventWorktreePath,
+			})
+		}
+		// Member canceled is terminal — release the panel synthesis.
+		wp.releaseIfPanelMember(job)
+	})
+}
+
 func (wp *WorkerPool) finishRunningJob(workerID string, jobID int64) {
 	// Remove the old cancellation handler before releasing the database row.
 	// Once worker_id becomes NULL, a rerun may be claimed and register a new
 	// handler for the same job ID.
-	wp.unregisterRunningJob(jobID)
+	wp.runningJobsMu.Lock()
+	var canceledSuccessor bool
+	if wp.runningJobs[jobID].callerBroadcastsEvent {
+		// A failover can be claimed before this worker finishes cleanup. A
+		// cancellation during that wait reaches this handler, but its event
+		// ownership belongs to the new claim as well.
+		err := wp.db.QueryRow(`SELECT EXISTS (
+			SELECT 1 FROM review_jobs WHERE id = ? AND status = 'canceled'
+			AND worker_id IS NOT NULL AND worker_id != ?
+		)`, jobID, workerID).Scan(&canceledSuccessor)
+		if err != nil {
+			log.Printf("[%s] Error checking canceled successor for job %d: %v", workerID, jobID, err)
+		}
+	}
+	delete(wp.runningJobs, jobID)
+	delete(wp.pendingCancels, jobID)
+	if canceledSuccessor {
+		wp.pendingCancels[jobID] = true
+	}
+	wp.runningJobsMu.Unlock()
+	wp.releaseCanceledClaim(workerID, jobID)
+}
+
+func (wp *WorkerPool) releaseCanceledClaim(workerID string, jobID int64) {
 	released, err := wp.db.ReleaseCanceledJob(jobID, workerID)
 	if err != nil {
 		log.Printf("[%s] Error releasing canceled job %d: %v", workerID, jobID, err)
