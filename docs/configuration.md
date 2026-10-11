@@ -1753,7 +1753,16 @@ screens are `queue`, `review`, `prompt`, `filter`, `comment`, `commit-msg`,
 `help`, `log`, `tasks`, `worktree-confirm`, `patch`, `column-options`,
 `release-notes` and `rerun-agent`. Each screen counts once per install per UTC
 day across interfaces, including daemon restarts. Screen names contain no paths,
-job IDs, filter text or review contents.
+job IDs, filter text or review contents. Daily screen claims live in
+`telemetry-daily.json` beside the daemon database, wherever `--db` points, with
+a `telemetry-daily.json.lock` sidecar. An unreadable or newer-version claims
+file makes screen reports fail until it's removed. Stop the daemon before
+deleting it. Deletion resets file claims; existing SQLite claims remain
+effective through their recorded UTC dates. Counts mean the report was queued,
+not confirmed delivered to PostHog. The TUI retries a failed screen report on
+the next key or mouse input while that screen is showing. The browser reports
+the visible screen on every window focus and page change, and the daemon counts
+it once per day.
 
 Each event carries `install_age_hours`, the whole hours since the install ID was
 created, so short-lived installs such as test sandboxes can be filtered out.

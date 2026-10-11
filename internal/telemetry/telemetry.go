@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -52,9 +53,14 @@ type Client = posthog.Client
 type Reporter = posthog.Reporter
 
 type Options struct {
-	Database *storage.DB
-	Version  string
-	Endpoint string
+	Database        *storage.DB
+	Version         string
+	Endpoint        string
+	DailyClaimsPath string
+}
+
+func DailyClaimsPath(dbPath string) string {
+	return filepath.Join(filepath.Dir(dbPath), "telemetry-daily.json")
 }
 
 func EnabledFromEnv() bool {
@@ -84,7 +90,7 @@ func NewReporter(opts Options) (*Reporter, error) {
 		InstalledAt: installedAt,
 		Version:     opts.Version,
 		Source:      "daemon",
-	}, allowedEventOptions()...)
+	}, append(allowedEventOptions(), posthog.WithDailyEvent(EventScreenViewed, PropertyScreen, posthog.NewDailyClaims(opts.DailyClaimsPath)))...)
 }
 
 func DisabledReporter() *Reporter {
@@ -117,7 +123,7 @@ func allowedEventOptions() []posthog.Option {
 		posthog.WithAllowedEvent(EventDaemonStarted, daemonProperties...),
 		posthog.WithAllowedEvent(EventDaemonActive, daemonProperties...),
 		posthog.WithAllowedEvent(EventScreenViewed,
-			posthog.AllowProperty(PropertyScreen, posthog.AllowStringValues(
+			posthog.RequireProperty(PropertyScreen, posthog.AllowStringValues(
 				"reviews", "analytics", "queue", "review", "prompt", "filter", "comment", "commit-msg", "help", "log", "tasks", "worktree-confirm", "patch", "column-options", "release-notes", "rerun-agent")),
 			posthog.AllowProperty(PropertySurface, posthog.AllowStringValues(SurfaceWeb, SurfaceTUI))),
 		posthog.WithAllowedEvent(EventAppOpened,
