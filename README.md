@@ -131,6 +131,20 @@ roborev refine --plan-only       # Inspect plans for existing failed reviews
 `refine` runs in an isolated worktree and loops: fix findings, wait for
 re-review, fix again, until all reviews pass or `--max-iterations` is hit.
 
+## Rebutting a Finding
+
+Use a stored reviewer session to re-evaluate one finding with your explanation:
+
+```bash
+roborev comment 42 --rebuttal --finding "Missing null check in handler." \
+  -m "The caller rejects null input before invoking the handler."
+```
+
+The assessment is saved as a comment. Add `--close` to close the whole review
+once it is recorded. See
+[Responding to Reviews](https://roborev.io/guides/responding-to-reviews/) for
+supported agents and recovery.
+
 ## Code Analysis
 
 Run targeted analysis across your codebase and optionally auto-fix:

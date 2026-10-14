@@ -44,6 +44,14 @@ type AddCommentResponse = Response
 
 type AddCommentErrorResponse = ErrorModel
 
+type AddCommentErrorResponseApplicationProblemPlusJSON = ErrorModel
+
+type AddCommentErrorResponseApplicationProblemPlusJSON409 = ErrorModel
+
+type AddCommentErrorResponseApplicationProblemPlusJSON422 = ErrorModel
+
+type AddCommentErrorResponseApplicationProblemPlusJSON500 = ErrorModel
+
 type ListCommentsResponse = ListCommentsOutputBody
 
 type ListCommentsErrorResponse = ErrorModel
@@ -240,6 +248,18 @@ type UnpauseQueueResponse = QueuePauseOutputBody
 
 type UnpauseQueueErrorResponse = ErrorModel
 
+type RebuttalResponse = ReviewJob
+
+type RebuttalErrorResponse = ErrorModel
+
+type RebuttalErrorResponseApplicationProblemPlusJSON = ErrorModel
+
+type RebuttalErrorResponseApplicationProblemPlusJSON409 = ErrorModel
+
+type RebuttalErrorResponseApplicationProblemPlusJSON422 = ErrorModel
+
+type RebuttalErrorResponseApplicationProblemPlusJSON500 = ErrorModel
+
 type ListReleasesResponse = ReleaseNotesResponse
 
 type ListReleasesErrorResponse = ErrorModel
@@ -307,6 +327,14 @@ type GetReviewErrorResponse = ErrorModel
 type CloseReviewResponse = CloseReviewOutputBody
 
 type CloseReviewErrorResponse = ErrorModel
+
+type CloseReviewErrorResponseApplicationProblemPlusJSON = ErrorModel
+
+type CloseReviewErrorResponseApplicationProblemPlusJSON409 = ErrorModel
+
+type CloseReviewErrorResponseApplicationProblemPlusJSON422 = ErrorModel
+
+type CloseReviewErrorResponseApplicationProblemPlusJSON500 = ErrorModel
 
 type MigrateReviewResponse = MigrateReviewOutputBody
 
@@ -452,10 +480,15 @@ type ListBranchesResp struct {
 }
 
 type AddCommentResp struct {
-	HTTPResponse *http.Response
-	Body         []byte
-	StatusCode   int
-	JSON201      *AddCommentResponse
+	HTTPResponse                  *http.Response
+	Body                          []byte
+	StatusCode                    int
+	JSON201                       *AddCommentResponse
+	ApplicationProblemPlusJSON400 *AddCommentErrorResponse
+	ApplicationProblemPlusJSON404 *AddCommentErrorResponseApplicationProblemPlusJSON
+	ApplicationProblemPlusJSON409 *AddCommentErrorResponseApplicationProblemPlusJSON409
+	ApplicationProblemPlusJSON422 *AddCommentErrorResponseApplicationProblemPlusJSON422
+	ApplicationProblemPlusJSON500 *AddCommentErrorResponseApplicationProblemPlusJSON500
 }
 
 type ListCommentsResp struct {
@@ -671,6 +704,18 @@ type UnpauseQueueResp struct {
 	JSON200      *UnpauseQueueResponse
 }
 
+type RebuttalResp struct {
+	HTTPResponse                  *http.Response
+	Body                          []byte
+	StatusCode                    int
+	JSON201                       *RebuttalResponse
+	ApplicationProblemPlusJSON400 *RebuttalErrorResponse
+	ApplicationProblemPlusJSON404 *RebuttalErrorResponseApplicationProblemPlusJSON
+	ApplicationProblemPlusJSON409 *RebuttalErrorResponseApplicationProblemPlusJSON409
+	ApplicationProblemPlusJSON422 *RebuttalErrorResponseApplicationProblemPlusJSON422
+	ApplicationProblemPlusJSON500 *RebuttalErrorResponseApplicationProblemPlusJSON500
+}
+
 type ListReleasesResp struct {
 	HTTPResponse *http.Response
 	Body         []byte
@@ -763,10 +808,15 @@ type GetReviewResp struct {
 }
 
 type CloseReviewResp struct {
-	HTTPResponse *http.Response
-	Body         []byte
-	StatusCode   int
-	JSON200      *CloseReviewResponse
+	HTTPResponse                  *http.Response
+	Body                          []byte
+	StatusCode                    int
+	JSON200                       *CloseReviewResponse
+	ApplicationProblemPlusJSON400 *CloseReviewErrorResponse
+	ApplicationProblemPlusJSON404 *CloseReviewErrorResponseApplicationProblemPlusJSON
+	ApplicationProblemPlusJSON409 *CloseReviewErrorResponseApplicationProblemPlusJSON409
+	ApplicationProblemPlusJSON422 *CloseReviewErrorResponseApplicationProblemPlusJSON422
+	ApplicationProblemPlusJSON500 *CloseReviewErrorResponseApplicationProblemPlusJSON500
 }
 
 type MigrateReviewResp struct {
@@ -1475,6 +1525,22 @@ func (c *RawClient) UnpauseQueueRaw(ctx context.Context, reqEditors ...runtime.R
 	req, err := c.apiClient.CreateRequest(ctx, runtime.RequestOptionsParameters{
 		RequestURL: c.apiClient.GetBaseURL() + "/api/queue/unpause",
 		Method:     "POST",
+	}, reqEditors...)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+	return c.doer.Do(ctx, req)
+}
+
+func (c *RawClient) RebuttalRaw(ctx context.Context, options *RebuttalRequestOptions, reqEditors ...runtime.RequestEditorFn) (*http.Response, error) {
+	if options == nil {
+		options = &RebuttalRequestOptions{}
+	}
+	req, err := c.apiClient.CreateRequest(ctx, runtime.RequestOptionsParameters{
+		RequestURL:  c.apiClient.GetBaseURL() + "/api/rebuttal",
+		Method:      "POST",
+		Options:     options,
+		ContentType: "application/json",
 	}, reqEditors...)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)

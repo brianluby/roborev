@@ -651,8 +651,15 @@ func (db *DB) claimJobAttempt(
 		SET status = 'running', worker_id = ?, started_at = ?, updated_at = ?,
 		    session_isolated = 0
 		WHERE id = (
-			SELECT id FROM review_jobs
-			WHERE status = 'queued'
+			SELECT candidate.id FROM review_jobs candidate
+			WHERE candidate.status = 'queued'
+			  AND (COALESCE(candidate.session_id, '') = '' OR NOT EXISTS (
+			    SELECT 1 FROM review_jobs busy
+			    WHERE (busy.status = 'running'
+			           OR (busy.status = 'canceled' AND COALESCE(busy.worker_id, '') <> ''))
+			      AND busy.session_id = candidate.session_id
+			      AND (candidate.source = ? OR busy.source = ?)
+			  ))
 			  AND claim_blocked = 0
 			  AND (retry_not_before IS NULL OR retry_not_before <= ?)
 			ORDER BY `+sqliteNormalizedTimestampExpr("enqueued_at")+`, id
@@ -663,7 +670,7 @@ func (db *DB) claimJobAttempt(
 			WHERE key IN (?, ?) AND value IN ('true', '1')
 		)
 		RETURNING id
-	`, workerID, nowStr, nowStr, nowNano, queuePausedStateKey, shutdownDrainingStateKey).Scan(&claimedID)
+	`, workerID, nowStr, nowStr, JobSourceRebuttal, JobSourceRebuttal, nowNano, queuePausedStateKey, shutdownDrainingStateKey).Scan(&claimedID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil // No jobs available
 	}
@@ -947,6 +954,14 @@ func (db *DB) MarkClassifyAgentInvoked(
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// JobSessionIsolated reports whether the job's session was captured in an
+// isolated checkout, so it must not be resumed from the original checkout.
+func (db *DB) JobSessionIsolated(ctx context.Context, jobID int64) (bool, error) {
+	var isolated bool
+	err := db.QueryRowContext(ctx, `SELECT session_isolated FROM review_jobs WHERE id = ?`, jobID).Scan(&isolated)
+	return isolated, err
 }
 
 // IsolateJobSession clears inherited resume metadata and marks this attempt's
