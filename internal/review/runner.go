@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"fmt"
 	"io"
+	"strings"
 
 	"go.kenn.io/roborev/internal/agent"
 	"go.kenn.io/roborev/internal/storage"
@@ -37,12 +38,11 @@ func RunAgentReview(
 	if err != nil {
 		return ReviewResult{}, err
 	}
-	if !jsontext.Value([]byte(raw)).IsValid() {
-		if noVerdict := NoVerdict(raw); noVerdict != nil {
-			return ReviewResult{}, noVerdict
-		}
+	document, err := agentReviewJSON(raw)
+	if err != nil {
+		return ReviewResult{}, err
 	}
-	structured, err := DecodeStructuredReview(jsontext.Value(raw))
+	structured, err := DecodeStructuredReview(document)
 	if err != nil {
 		return ReviewResult{}, err
 	}
@@ -57,7 +57,48 @@ func RunAgentReview(
 		Output:           output,
 		Verdict:          storage.VerdictFromPassed(structured.Passed(minSeverity)),
 		Structured:       &structured,
-		StructuredOutput: append(jsontext.Value(nil), raw...),
+		StructuredOutput: append(jsontext.Value(nil), document...),
 		MinSeverity:      minSeverity,
 	}, nil
+}
+
+// agentReviewJSON returns the review document in an agent's raw output.
+// Agents without a native schema mode rely on prompt instructions alone and
+// sometimes write prose before the document, often ending with a fenced json
+// block. Native schema adapters reject invalid JSON themselves, so only those
+// prompt-only agents reach the recovery. The trailing document is recovered
+// before any prose classification, so narration that mentions a transient
+// read failure cannot hide a valid review; the decoder and
+// validateLiveDocument then judge the document, including unable_to_review.
+// Output with no document is classified by NoVerdict, and anything else is
+// left for the decoder to reject.
+func agentReviewJSON(raw string) (jsontext.Value, error) {
+	if jsontext.Value(raw).IsValid() {
+		return jsontext.Value(raw), nil
+	}
+	if document := extractTrailingJSONObject(raw); document != "" {
+		return jsontext.Value(document), nil
+	}
+	if noVerdict := NoVerdict(raw); noVerdict != nil {
+		return nil, noVerdict
+	}
+	return jsontext.Value(raw), nil
+}
+
+// extractTrailingJSONObject returns the JSON object that ends the output,
+// optionally closed by a ``` fence. Only an object that starts a line is
+// tried, so braces inside prose cost nothing. The object must run to the end:
+// text after it, including after a closing fence, is not recovered. Returns ""
+// when no line starts a complete JSON value.
+func extractTrailingJSONObject(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimSpace(strings.TrimSuffix(s, "```"))
+	offset := 0
+	for line := range strings.Lines(s) {
+		if strings.HasPrefix(line, "{") && jsontext.Value(s[offset:]).IsValid() {
+			return s[offset:]
+		}
+		offset += len(line)
+	}
+	return ""
 }
