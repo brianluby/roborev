@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -252,6 +253,7 @@ func normalizeVerdictLine(line string) string {
 	// Normalize curly apostrophes to straight apostrophes (LLMs sometimes use these)
 	normalized = strings.ReplaceAll(normalized, "\u2018", "'") // left single quote
 	normalized = strings.ReplaceAll(normalized, "\u2019", "'") // right single quote
+	normalized = strings.TrimSpace(config.StripTimestampPrefix(normalized))
 	normalized = stripMarkdown(normalized)
 	normalized = stripListMarker(normalized)
 	return stripFieldLabel(normalized)
@@ -299,6 +301,23 @@ func isNoFindingVerdictLine(line string) bool {
 
 func isExplicitVerdictValue(line, value string) bool {
 	return line == value
+}
+
+// stampedHeading matches an ATX heading marker once a timestamp is removed.
+var stampedHeading = regexp.MustCompile(`^ {0,3}(#{1,6})(?:[ \t]|$)`)
+
+// StampedHeadingLevel returns the ATX heading level of a line that begins
+// with a timestamp, or zero. Markdown parsers read "[stamp] ### Title" as a
+// paragraph, so callers recover the section boundary from the stripped text.
+func StampedHeadingLevel(line string) int {
+	stripped := config.StripTimestampPrefix(line)
+	if stripped == line {
+		return 0
+	}
+	if m := stampedHeading.FindStringSubmatch(stripped); m != nil {
+		return len(m[1])
+	}
+	return 0
 }
 
 // stripMarkdown removes common markdown formatting from a line
@@ -395,6 +414,7 @@ func ProseSeverityLabels(lines []string) []ProseLabel {
 	labels := make([]ProseLabel, len(lines))
 	legend, entries := false, false
 	for i, line := range lines {
+		line = config.StripTimestampPrefix(line)
 		trimmed := strings.TrimSpace(line)
 		severity := proseSeverityLabel(line)
 		switch {
@@ -472,8 +492,8 @@ func proseSeverityLabel(line string) string {
 // value is "summary", "findings", "separator", or empty for ordinary prose.
 // Verdict parsing and comment preparation use the same boundaries.
 func ProseSection(line string) string {
-	line = strings.ToLower(strings.TrimSpace(line))
-	if line == "---" {
+	line = strings.TrimSpace(config.StripTimestampPrefix(strings.ToLower(strings.TrimSpace(line))))
+	if line == "---" || line == "***" || line == "___" {
 		return "separator"
 	}
 	line = stripListMarker(stripMarkdown(line))
