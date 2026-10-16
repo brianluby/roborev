@@ -110,6 +110,36 @@ func TestGoldenPrompt_SingleReviewDefault(t *testing.T) {
 	assertGolden(t, scrubDynamic(prompt), "single_review_default.golden")
 }
 
+func TestGoldenPrompt_SingleWithToolchain(t *testing.T) {
+	r := newGoldenTestRepo(t)
+	r.writeFile("go.mod", "module example.com/app\n\ngo 1.27.0\n")
+	r.git("add", "go.mod")
+	r.git("commit", "-m", "add go.mod")
+	sha := r.commitFile("main.go", "package main\n\nfunc main() {}\n", "add main")
+
+	b := NewBuilder(nil)
+	prompt, err := b.ForRepo(r.dir, 0).Build(sha, 0, "test", "", "")
+	require.NoError(t, err)
+
+	assertGolden(t, scrubDynamic(prompt), "single_with_toolchain.golden")
+}
+
+// TestSinglePromptOmitsToolchainWithoutGoChanges locks the gating: a
+// repository may declare a toolchain, but changes that touch no Go files
+// carry no version-gated findings, so the fact stays out of the prompt.
+func TestSinglePromptOmitsToolchainWithoutGoChanges(t *testing.T) {
+	r := newGoldenTestRepo(t)
+	r.writeFile("go.mod", "module example.com/app\n\ngo 1.27.0\n")
+	r.git("add", "go.mod")
+	r.git("commit", "-m", "add go.mod")
+	sha := r.commitFile("notes.md", "hello world\n", "add notes")
+
+	prompt, err := NewBuilder(nil).ForRepo(r.dir, 0).Build(sha, 0, "test", "", "")
+	require.NoError(t, err)
+
+	assert.NotContains(t, prompt, "## Toolchain")
+}
+
 func TestGoldenPrompt_SingleReviewCodex(t *testing.T) {
 	r := newGoldenTestRepo(t)
 	sha := r.commitFile("hello.txt", "hello world\n", "add greeting")
