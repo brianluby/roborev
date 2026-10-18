@@ -44,6 +44,10 @@ const (
 	Duration1To5m          = "1_to_5m"
 	Duration5To30m         = "5_to_30m"
 	DurationOver30m        = "over_30m"
+	Count0To5              = "0-5"
+	Count6To20             = "6-20"
+	Count21To100           = "21-100"
+	CountOver100           = "over-100"
 	SurfaceWeb             = "web"
 	SurfaceTUI             = "tui"
 	SurfaceCLI             = "cli"
@@ -116,9 +120,10 @@ func NewReporterOrDisabled(opts Options) *Reporter {
 }
 
 func allowedEventOptions() []posthog.Option {
+	countBuckets := []string{Count0To5, Count6To20, Count21To100, CountOver100}
 	daemonProperties := []posthog.AllowedProperty{
-		posthog.AllowProperty("repo_count", posthog.AllowNumber),
-		posthog.AllowProperty("review_count", posthog.AllowNumber),
+		posthog.AllowProperty("repo_count", posthog.AllowStringValues(countBuckets...)),
+		posthog.AllowProperty("review_count", posthog.AllowStringValues(countBuckets...)),
 		posthog.AllowProperty("sync_enabled", posthog.AllowBool),
 		posthog.AllowProperty("ci_enabled", posthog.AllowBool),
 		posthog.AllowProperty("auto_design_enabled", posthog.AllowBool),
@@ -132,7 +137,7 @@ func allowedEventOptions() []posthog.Option {
 		posthog.WithAllowedEvent(EventAgentActive,
 			posthog.AllowProperty(PropertyCallCountBucket, posthog.AllowStringValues("1-10"))),
 		posthog.WithAllowedEvent(EventAgentCallCount,
-			posthog.AllowProperty(PropertyCallCountBucket, posthog.AllowStringValues("11-100", "over-100"))),
+			posthog.AllowProperty(PropertyCallCountBucket, posthog.AllowStringValues("11-100", CountOver100))),
 		posthog.WithAllowedEvent(EventDaemonStarted, daemonProperties...),
 		posthog.WithAllowedEvent(EventDaemonActive, daemonProperties...),
 		posthog.WithAllowedEvent(EventScreenViewed,
@@ -144,6 +149,20 @@ func allowedEventOptions() []posthog.Option {
 		posthog.WithAllowedEvent(EventSessionEnded,
 			posthog.AllowProperty(PropertySurface, posthog.AllowStringValues(SurfaceWeb, SurfaceTUI)),
 			posthog.AllowProperty(PropertyDurationBucket, posthog.AllowStringValues(DurationUnder1m, Duration1To5m, Duration5To30m, DurationOver30m))),
+	}
+}
+
+// CountBucket groups totals without sending an exact count.
+func CountBucket(count int) string {
+	switch {
+	case count <= 5:
+		return Count0To5
+	case count <= 20:
+		return Count6To20
+	case count <= 100:
+		return Count21To100
+	default:
+		return CountOver100
 	}
 }
 
