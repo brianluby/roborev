@@ -275,18 +275,18 @@ func TestCLIUseLeavesOutputAndExitUnchanged(t *testing.T) {
 }
 
 type startupSeamCounts struct {
-	getAny, probe, cleanup, restart, start atomic.Int32
+	getAny, probe, cleanup, service, start atomic.Int32
 }
 
 func (c *startupSeamCounts) snapshot() [5]int32 {
-	return [5]int32{c.getAny.Load(), c.probe.Load(), c.cleanup.Load(), c.restart.Load(), c.start.Load()}
+	return [5]int32{c.getAny.Load(), c.probe.Load(), c.cleanup.Load(), c.service.Load(), c.start.Load()}
 }
 
 func (c *startupSeamCounts) reset() {
 	c.getAny.Store(0)
 	c.probe.Store(0)
 	c.cleanup.Store(0)
-	c.restart.Store(0)
+	c.service.Store(0)
 	c.start.Store(0)
 }
 
@@ -295,7 +295,8 @@ func stubStartupSeams(t *testing.T) *startupSeamCounts {
 	t.Helper()
 	counts := &startupSeamCounts{}
 	origGetAny, origProbe, origCleanup := getAnyRunningDaemon, probeDaemonForEnsure, cleanupZombieDaemons
-	origRestart, origStart := restartDaemonForEnsure, startDaemonForEnsure
+	origStart, origService := startDaemonForEnsure, findDaemonService
+	findDaemonService = func(context.Context, int) (*daemonService, error) { counts.service.Add(1); return nil, nil }
 	getAnyRunningDaemon = func() (*daemon.RuntimeInfo, error) {
 		counts.getAny.Add(1)
 		return nil, os.ErrNotExist
@@ -308,17 +309,13 @@ func stubStartupSeams(t *testing.T) *startupSeamCounts {
 		counts.cleanup.Add(1)
 		return 0
 	}
-	restartDaemonForEnsure = func() error {
-		counts.restart.Add(1)
-		return errors.New("restart failed")
-	}
 	startDaemonForEnsure = func() error {
 		counts.start.Add(1)
 		return errors.New("start failed")
 	}
 	t.Cleanup(func() {
 		getAnyRunningDaemon, probeDaemonForEnsure, cleanupZombieDaemons = origGetAny, origProbe, origCleanup
-		restartDaemonForEnsure, startDaemonForEnsure = origRestart, origStart
+		startDaemonForEnsure, findDaemonService = origStart, origService
 	})
 	return counts
 }
