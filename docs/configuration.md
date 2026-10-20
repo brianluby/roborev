@@ -1966,12 +1966,40 @@ review, synthesis and compact output.
     nonquiet `fix` output. CLI fixes from `fix`, `refine`, and `analyze --fix`
     report `finding_fixed` when they commit. CLI actions require terminal output
     and exclude agents and `--from-skill`.
-- Reopens, automatic closes, prompt reads, and analysis reads stay silent.
+- Successful reopens, automatic closes, prompt reads, and analysis reads stay
+    silent.
 - With a remote `--server`, CLI events use an already-running local daemon and
     its installation ID. Without a local daemon, events are dropped. Reporting
     never starts a daemon.
 
-The daemon owns daily deduplication, so clients may repeat a report.
+Core action error banners and toasts in the web UI and TUI send `error_shown`
+with `surface=web|tui` and `kind=review_viewed|finding_fixed|review_closed`,
+without a daily limit. A TUI error counts when its flash or pane first appears
+on screen; a flash for another view that expires unseen stays silent.
+
+- `review_viewed` counts a review that fails to load or render, including the
+    TUI split pane's load error. A failure counts once per selection; reloads
+    and background retries that show the same failure stay silent until the
+    review loads, the selection changes, or the user opens or retries it.
+- Failed closes and reopens both count as `review_closed`. A close that succeeds
+    but whose refreshed review can't load also counts.
+- Failed agent jobs, missing reviews, and CLI errors stay silent.
+- Daemon-unreachable errors can't be counted because reporting uses the daemon.
+
+The daemon sends `sync_failed` when a full sync pass fails after a successful
+pass in the same process, once per PostgreSQL outage, with
+`sync_source=postgres` and `reason=auth|network|timeout|other`. A full push and
+pull that reaches PostgreSQL allows the next outage to report, even when
+row-specific data errors (SQLSTATE class 22 or 23) rejected some rows. Those
+data errors, local SQLite errors, rows that fail local checks or conflict with
+an existing experiment, and configuration errors never report an outage on their
+own. A PostgreSQL failure seen earlier in a pass still reports when the pass
+stops for one of those reasons. Outage state resets when the daemon restarts;
+reporting resumes after a full pass succeeds. Unlisted `kind`, `reason`, and
+`sync_source` values become `other`. Neither event contains error text.
+
+The daemon deduplicates successful core action reports per day, so clients may
+repeat them.
 
 The browser and TUI also report `screen_viewed` with a fixed `screen` name and
 `surface` of `web` or `tui`. Browser screens are `reviews` and `analytics`. TUI

@@ -69,13 +69,19 @@ func TestCoreActionDailyClaims(t *testing.T) {
 	}
 	// Review views and screen views have independent daily claims.
 	assert.Equal(t, http.StatusAccepted, post(`{"event":"screen_viewed","properties":{"screen":"review","surface":"tui"}}`).Code)
+	for range 2 {
+		assert.Equal(t, http.StatusAccepted, post(`{"event":"error_shown","properties":{"surface":"tui","kind":"review_closed"}}`).Code)
+	}
 	require.NoError(t, reporter.Close())
 	sent := messages()
-	require.Len(t, sent, 9)
+	require.Len(t, sent, 11)
 	assert.Equal(t, []string{
 		"review_viewed:web", "review_viewed:tui", "review_viewed:cli",
 		"finding_fixed:tui", "finding_fixed:cli",
 		"review_closed:web", "review_closed:tui", "review_closed:cli",
 		"screen_viewed:tui",
+		"error_shown:tui", "error_shown:tui",
 	}, surfacesOf(sent))
+	assert.Equal(t, "review_closed", sent[9].Properties["kind"])
+	assert.Equal(t, "review_closed", sent[10].Properties["kind"])
 }

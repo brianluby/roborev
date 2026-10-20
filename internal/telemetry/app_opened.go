@@ -59,7 +59,7 @@ func (l *AppOpenedLimiter) Handler(reporter *Reporter) http.Handler {
 						http.Error(w, "read telemetry claim", http.StatusInternalServerError)
 						return
 					}
-				case EventSessionEnded, EventReviewViewed, EventFindingFixed, EventReviewClosed:
+				case EventSessionEnded, EventReviewViewed, EventFindingFixed, EventReviewClosed, EventErrorShown:
 				default:
 					http.Error(w, ErrUnsupportedEvent.Error(), http.StatusBadRequest)
 					return
