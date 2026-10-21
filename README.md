@@ -471,8 +471,8 @@ from the operator's shell).
 
 ## Telemetry
 
-roborev sends limited anonymous telemetry to PostHog when the daemon starts
-and once every 24 hours while the daemon remains running: `daemon_started`
+Release builds of roborev send limited anonymous telemetry to PostHog when the
+daemon starts and once every 24 hours while it remains running: `daemon_started`
 and `daemon_active` with `repo_count` and `review_count` as buckets: `0-5`,
 `6-20`, `21-100`, or `over-100`. These events also include sync enabled,
 CI enabled, and auto-design enabled, plus `application=roborev`, version, OS/arch,
@@ -500,7 +500,7 @@ management commands, and commands the bundled agent skills run with
 `--from-skill`, do not. Agent calls count separately as described below. The daemon sends at most one `app_opened` per surface
 per UTC day, so repeated opens on the same day count once, with the same install
 ID and default fields plus `surface` (`web`, `tui` or `cli`). The browser, the TUI and the CLI only talk to the daemon; the TUI and the
-CLI also send nothing when either opt-out variable is set in their own
+CLI also send nothing when an opt-out variable is set in their own
 environment.
 The browser and TUI also report `screen_viewed` with a fixed `screen` name and
 `surface` of `web` or `tui`. Browser screens are `reviews` and `analytics`.
@@ -542,7 +542,7 @@ add nothing. The daemon emits `agent_active` once per install per UTC day with
 `call_count_bucket=1-10`, then `agent_call_count` only on calls 11 and 101 with
 `11-100` and `over-100`. The highest bucket observed that day represents its
 volume. Counts persist across restarts in the existing local database.
-Delivery is best effort and honors both opt-outs.
+Delivery is best effort and honors all opt-outs.
 CLI and stdio MCP notifications and TUI exit reports use a one-second request
 timeout. CLI commands, stdio MCP sessions, and the TUI wait up to 50 ms at exit
 for unfinished reports. Finished reports add no delay. An unfinished report may
@@ -550,9 +550,9 @@ be lost when the process exits. Telemetry alone never starts a daemon.
 Each event also carries `install_age_hours`, the whole hours since the install
 was created, so short-lived installs such as test sandboxes can be filtered out.
 It does not send repo names, paths, remotes, prompts, review output, provider
-tokens, usernames, or IP geolocation. Set `ROBOREV_TELEMETRY_ENABLED=0` to
-disable it. `TELEMETRY_ENABLED=0` is also honored. Telemetry is always disabled
-inside Go test processes, regardless of environment variables.
+tokens, usernames, or IP geolocation. Set `ROBOREV_TELEMETRY_ENABLED=0`,
+`TELEMETRY_ENABLED=0`, or `DO_NOT_TRACK=1` to disable it, then restart the
+daemon. Telemetry is always off in CI and inside Go test processes.
 
 ## Security Model
 

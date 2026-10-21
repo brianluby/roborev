@@ -20,6 +20,7 @@ All notable changes to roborev, grouped by minor release.
 
 **Improvements**
 
+- Honor `DO_NOT_TRACK` and keep telemetry off in CI and non-release builds.
 - Count core action error banners and toasts in the web UI and TUI, and
     PostgreSQL sync outages, in anonymous telemetry using fixed action names and
     error classes. Failed closes and reopens both count. Each review load or

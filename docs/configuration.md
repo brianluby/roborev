@@ -1893,17 +1893,19 @@ systemctl --user enable --now roborev
 | `ROBOREV_COLOR_MODE` | Color theme: `auto` (default), `dark`, `light`, `none`. See [Color Mode](#color-mode) |
 | `ROBOREV_TELEMETRY_ENABLED` | Set to `0` to disable anonymous telemetry |
 | `TELEMETRY_ENABLED` | Generic telemetry opt-out. Set to `0` to disable telemetry |
+| `DO_NOT_TRACK` | Set to `1` to disable telemetry |
 | `VOYAGE_API_KEY` | Example credential source for Voyage when named by `search.embeddings.api_key = { env = "VOYAGE_API_KEY" }` |
 | `NO_COLOR` | Set to any value to disable all color output ([no-color.org](https://no-color.org)) |
 
 ### Telemetry
 
-roborev sends limited anonymous telemetry when the daemon starts and once every
-24 hours while it remains running. Events are `daemon_started` and
-`daemon_active`, with `repo_count` and `review_count` as buckets: `0-5`, `6-20`,
-`21-100`, or `over-100`. These events also include whether sync is enabled,
-whether CI is enabled, whether auto design review is enabled, roborev version,
-OS, architecture, and an anonymous install ID stored in the local database.
+Release builds of roborev send limited anonymous telemetry when the daemon
+starts and once every 24 hours while it remains running. Events are
+`daemon_started` and `daemon_active`, with `repo_count` and `review_count` as
+buckets: `0-5`, `6-20`, `21-100`, or `over-100`. These events also include
+whether sync is enabled, whether CI is enabled, whether auto design review is
+enabled, roborev version, OS, architecture, and an anonymous install ID stored
+in the local database.
 
 The daemon sends `setup_finished` once per install the first time it finds a
 finished review: one that ran locally, arrived through sync, or already existed
@@ -1946,7 +1948,7 @@ with `11-100` and `over-100`. Use the highest bucket observed per install and
 UTC day for volume. The local daily count survives daemon restarts in the
 existing database, without a schema migration. These events add no `app_opened`
 events. Each threshold claims one delivery attempt, even if capture fails.
-Delivery is best effort and honors both opt-outs. Failed delivery isn't retried.
+Delivery is best effort and honors all opt-outs. Failed delivery isn't retried.
 CLI and stdio MCP notifications and TUI exit reports use a one-second request
 timeout. CLI commands, stdio MCP sessions, and the TUI wait up to 50 ms at exit
 for unfinished reports. Finished reports add no delay. An unfinished report may
@@ -2029,12 +2031,13 @@ created, so short-lived installs such as test sandboxes can be filtered out.
 Installs created before roborev recorded that time send events without it.
 
 Telemetry does not include repo names, paths, remotes, prompts, review output,
-provider tokens, usernames, or IP geolocation. Disable it with either
-environment variable:
+provider tokens, usernames, or IP geolocation. It's always off in CI. Disable it
+with any of these environment variables:
 
 ```bash
 ROBOREV_TELEMETRY_ENABLED=0 roborev daemon run
 TELEMETRY_ENABLED=0 roborev daemon run
+DO_NOT_TRACK=1 roborev daemon run
 ROBOREV_TELEMETRY_ENABLED=0 roborev tui
 ROBOREV_TELEMETRY_ENABLED=0 roborev review
 ```

@@ -18,12 +18,15 @@ import (
 
 	"go.kenn.io/roborev/internal/storage"
 	"go.kenn.io/roborev/internal/telemetry"
+	"go.kenn.io/roborev/internal/testutil"
 )
 
-func enableTelemetryEnv(t *testing.T) {
+func enableTelemetryEnv(t *testing.T) string {
 	t.Helper()
+	releaseVersion := testutil.SetTelemetryReleaseEnv(t)
 	t.Setenv(telemetry.EnabledEnv, "1")
 	t.Setenv(telemetry.GenericEnabledEnv, "1")
+	return releaseVersion
 }
 
 //nolint:paralleltest // t.Setenv of telemetry opt-out variables

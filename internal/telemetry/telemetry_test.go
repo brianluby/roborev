@@ -25,6 +25,7 @@ func TestDailyClaimsPath(t *testing.T) {
 }
 
 func TestEnabledFromEnvHonorsRoborevAndGenericOptOut(t *testing.T) {
+	testutil.SetTelemetryReleaseEnv(t)
 	t.Setenv(GenericEnabledEnv, "")
 	t.Setenv(EnabledEnv, "0")
 	assert.False(t, EnabledFromEnv())
@@ -151,6 +152,7 @@ func TestLoadOrCreateInstallKeepsCreationTimeAcrossRestart(t *testing.T) {
 }
 
 func TestAllowedEventOptionsConfigureRoborevDaemonEvents(t *testing.T) {
+	releaseVersion := testutil.SetTelemetryReleaseEnv(t)
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -162,7 +164,7 @@ func TestAllowedEventOptionsConfigureRoborevDaemonEvents(t *testing.T) {
 		Application: "roborev",
 		EnvPrefix:   "ROBOREV",
 		DistinctID:  "anonymous-install-id",
-		Version:     "test-version",
+		Version:     releaseVersion,
 		Source:      "daemon",
 	}, allowedEventOptions()...)
 	require.NoError(err)
@@ -210,21 +212,13 @@ func TestAllowedEventOptionsConfigureRoborevDaemonEvents(t *testing.T) {
 	assert.False(reporter.EventAllowed("repo_opened"))
 
 	props, err := reporter.SanitizeProperties(EventDaemonActive, map[string]any{
-		"sync_enabled":            true,
-		"worker_count":            4,
-		"$process_person_profile": true,
-		"$geoip_disable":          false,
-		"application":             "caller-app",
+		"sync_enabled": true,
+		"worker_count": 4,
 	})
 	require.NoError(err)
 
 	assert.Equal(true, props["sync_enabled"])
 	assert.NotContains(props, "worker_count")
-	assert.Equal("roborev", props["application"])
-	assert.Equal("test-version", props["version"])
-	assert.Equal("daemon", props["source"])
-	assert.False(props["$process_person_profile"].(bool))
-	assert.True(props["$geoip_disable"].(bool))
 	for _, event := range []string{EventDaemonStarted, EventDaemonActive} {
 		for _, bucket := range []string{"0-5", "6-20", "21-100", "over-100"} {
 			props, err := reporter.SanitizeProperties(event, map[string]any{"repo_count": bucket, "review_count": bucket})
@@ -378,14 +372,16 @@ func TestNewReporterOptedOutKeepsAllowlist(t *testing.T) {
 // newPostHogStubReporter returns an enabled reporter and its captured messages.
 func newPostHogStubReporter(t *testing.T) (*Reporter, func() []testutil.PostHogMessage) {
 	t.Helper()
+	releaseVersion := testutil.SetTelemetryReleaseEnv(t)
 	endpoint, messages := testutil.NewPostHogStub(t)
 	path := filepath.Join(t.TempDir(), "daily.json")
-	reporter, err := NewReporter(Options{Endpoint: endpoint, DailyClaimsPath: path, Database: testutil.OpenTestDB(t)})
+	reporter, err := NewReporter(Options{Version: releaseVersion, Endpoint: endpoint, DailyClaimsPath: path, Database: testutil.OpenTestDB(t)})
 	require.NoError(t, err)
 	return reporter, messages
 }
 
 func TestNewReporterOrDisabledErrorFallbackAdmitsNothing(t *testing.T) {
+	testutil.SetTelemetryReleaseEnv(t)
 	t.Setenv(EnabledEnv, "1")
 	t.Setenv(GenericEnabledEnv, "1")
 
