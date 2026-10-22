@@ -15,7 +15,7 @@ env:
 
 jobs:
   go-changes:
-    runs-on: namespace-profile-linux-4cpu
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
@@ -82,7 +82,7 @@ jobs:
   api:
     needs: go-changes
     if: needs.go-changes.outputs.changed == 'true'
-    runs-on: namespace-profile-linux-4cpu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -92,12 +92,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.27.3'
-          cache: false
-
-      - name: Configure Namespace Go cache
-        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9  # v1
-        with:
-          cache: go
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
@@ -119,7 +113,7 @@ jobs:
   api-breaking:
     needs: go-changes
     if: github.event_name == 'pull_request' && needs.go-changes.outputs.changed == 'true'
-    runs-on: namespace-profile-linux-4cpu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -128,12 +122,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.27.3'
-          cache: false
-
-      - name: Configure Namespace Go cache
-        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9  # v1
-        with:
-          cache: go
 
       - name: Check for breaking API contract changes
         env:
@@ -143,7 +131,7 @@ jobs:
   web:
     needs: go-changes
     if: needs.go-changes.outputs.web == 'true'
-    runs-on: namespace-profile-linux-8cpu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -153,12 +141,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.27.3'
-          cache: false
-
-      - name: Configure Namespace Go cache
-        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9  # v1
-        with:
-          cache: go
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
@@ -201,9 +183,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            runner: namespace-profile-linux-8cpu
+            runner: ubuntu-latest
           - os: macos-latest
-            runner: namespace-profile-mac-6cpu
+            runner: macos-latest
           - os: windows-latest
             runner: windows-2025
             shard: windows-remaining
@@ -253,13 +235,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.27.3'
-          cache: ${{ runner.os == 'Windows' }}
-
-      - name: Configure Namespace Go cache
-        if: runner.os != 'Windows'
-        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9  # v1
-        with:
-          cache: go
 
       # prepare-demo-db.sh tests run the uv pinned in mise.lock.
       - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8  # v5.1.2
@@ -356,7 +331,7 @@ jobs:
             pattern: *daemon-g-m-t-z
           - name: n-s
             pattern: *daemon-n-s
-    runs-on: namespace-profile-linux-8cpu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -366,12 +341,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.27.3'
-          cache: false
-
-      - name: Configure Namespace Go cache
-        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9  # v1
-        with:
-          cache: go
 
       - name: Test daemon with race detection
         run: |
@@ -392,7 +361,7 @@ jobs:
   coverage:
     needs: go-changes
     if: needs.go-changes.outputs.changed == 'true'
-    runs-on: namespace-profile-linux-8cpu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -402,12 +371,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.27.3'
-          cache: false
-
-      - name: Configure Namespace Go cache
-        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9  # v1
-        with:
-          cache: go
 
       # prepare-demo-db.sh tests run the uv pinned in mise.lock.
       - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8  # v5.1.2
@@ -438,7 +401,7 @@ jobs:
   integration:
     needs: go-changes
     if: needs.go-changes.outputs.changed == 'true'
-    runs-on: namespace-profile-linux-4cpu
+    runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:18-alpine
@@ -462,12 +425,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.27.3'
-          cache: false
-
-      - name: Configure Namespace Go cache
-        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9  # v1
-        with:
-          cache: go
 
       - name: Run integration tests
         run: make test-postgres-ci GOFLAGS=-shuffle=on
@@ -477,7 +434,7 @@ jobs:
   lint:
     needs: go-changes
     if: needs.go-changes.outputs.lint == 'true'
-    runs-on: namespace-profile-linux-4cpu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -489,13 +446,6 @@ jobs:
         if: needs.go-changes.outputs.changed == 'true'
         with:
           go-version: '1.27.3'
-          cache: false
-
-      - name: Configure Namespace Go cache
-        if: needs.go-changes.outputs.changed == 'true'
-        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9  # v1
-        with:
-          cache: go
 
       - name: Resolve pinned golangci-lint version
         if: needs.go-changes.outputs.changed == 'true'
