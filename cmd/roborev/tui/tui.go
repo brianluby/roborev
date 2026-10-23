@@ -1088,6 +1088,12 @@ func uniqueJobRepoPaths(jobs []storage.ReviewJob) []string {
 // if the stored branch is empty and the repo is available locally.
 // Results are cached to avoid repeated git calls on render.
 func (m *model) getBranchForJob(job storage.ReviewJob) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return m.getBranchForJobCtx(ctx, job)
+}
+
+func (m *model) getBranchForJobCtx(ctx context.Context, job storage.ReviewJob) string {
 	// Use stored branch if available
 	if job.Branch != "" {
 		return job.Branch
@@ -1125,7 +1131,7 @@ func (m *model) getBranchForJob(job storage.ReviewJob) string {
 		sha = sha[idx+2:]
 	}
 
-	branch := git.GetBranchName(job.RepoPath, sha)
+	branch := git.GetBranchNameCtx(ctx, job.RepoPath, sha)
 	if branch == "" {
 		// The commit isn't reachable from any local branch - typically a
 		// commit made on top of a detached HEAD (e.g. mid git-bisect).
