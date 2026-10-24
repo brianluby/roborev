@@ -5,6 +5,13 @@ description: Release history for roborev
 
 All notable changes to roborev, grouped by minor release.
 
+## Unreleased
+
+**Improvements**
+
+- Start daemons over runtime records left by dead sandboxes.
+- Sandboxed commands keep the host daemon's runtime record.
+
 ## 0.73.0
 
 <small>2026-10-23</small>
