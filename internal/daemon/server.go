@@ -2467,6 +2467,7 @@ func (s *Server) humaUnpauseQueue(
 		)
 	}
 	resp := &QueuePauseOutput{}
+	s.workerPool.wake()
 	resp.Body.QueuePaused = false
 	return resp, nil
 }
@@ -2748,6 +2749,7 @@ func (s *Server) broadcastRerunEnqueued(
 		SHA:      source.GitRef,
 		Agent:    source.Agent,
 	})
+	s.workerPool.wake()
 }
 
 func (s *Server) humaCloseReview(
@@ -3429,6 +3431,7 @@ func (s *Server) logEnqueueSideEffects(
 		SHA:      job.GitRef,
 		Agent:    in.agentName,
 	})
+	s.workerPool.wake()
 }
 
 func (s *Server) humaBatchJobs(
@@ -3859,6 +3862,7 @@ func (s *Server) humaFixJob(
 			ErrorResponse{Error: fmt.Sprintf("enqueue fix job: %v", err)},
 		)
 	}
+	s.workerPool.wake()
 	if commitID > 0 {
 		job.CommitSubject = parentJob.CommitSubject
 	}
