@@ -624,6 +624,30 @@ func applyExperimentOverlay(global *Config, rawRepo, overlay map[string]any) (ma
 		}
 	}
 
+	// An experiment's tools replace the base policy as a whole, like a member
+	// policy. An override without tools keeps the replaced definition's policy.
+	for _, key := range []string{"types", "subagents"} {
+		overlayEntries, _ := overlayReview[key].(map[string]any)
+		repoEntries, _ := repoReview[key].(map[string]any)
+		globalEntries, _ := globalReview[key].(map[string]any)
+		for name, entryOverlay := range overlayEntries {
+			base, exists := repoEntries[name]
+			if !exists {
+				base = globalEntries[name]
+			}
+			baseMap, _ := base.(map[string]any)
+			overlayMap, _ := entryOverlay.(map[string]any)
+			tools, ok := overlayMap["tools"]
+			if !ok {
+				tools, ok = baseMap["tools"]
+			}
+			entry, _ := effectiveReview[key].(map[string]any)[name].(map[string]any)
+			if ok && entry != nil {
+				entry["tools"] = cloneExperimentValue(tools)
+			}
+		}
+	}
+
 	// A configured repository CI review matrix replaces the global matrix,
 	// including when it is explicitly empty. The treatment may still merge a
 	// partial matrix onto that effective base because nested experiment tables
