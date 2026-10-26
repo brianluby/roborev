@@ -17,19 +17,37 @@ only).
 
 ### Package builds
 
-Package maintainers can disable self-updates so users upgrade through their
-package manager. Set this linker flag when building:
+Package maintainers can mark a build as owned by their package manager, so users
+upgrade through it instead of `roborev update`. Set
+`internal/version.Distribution` to the package manager's name with a linker
+flag:
 
 ```bash
-CGO_ENABLED=0 go build \
-  -ldflags="-X go.kenn.io/roborev/internal/update.disabled=true" \
+go build \
+  -ldflags="-X go.kenn.io/roborev/internal/version.Distribution=homebrew" \
   -o bin/roborev ./cmd/roborev
 ```
 
-These builds reject `roborev update`, including `--check` and `--force`, with a
-message directing users to their package manager. The terminal interface skips
-update checks and update notifications. Builds without this flag retain the
-normal update behavior.
+- `roborev update`, including `--force`, refuses to replace these builds. For
+    `homebrew`, the message tells users to run `brew upgrade roborev`. Other
+    names get a message naming the package.
+- `roborev update --check` still reports newer releases and says to upgrade
+    through the package manager.
+- The terminal interface skips update checks and update notifications.
+- Builds with an empty `Distribution`, the default, keep the normal update
+    behavior. So do official direct downloads, which set `Distribution` to
+    `kenn`.
+
+Homebrew formulas can use the `homebrew` make target. It runs the normal build
+with cgo enabled and `Distribution` set to `homebrew`:
+
+```bash
+make homebrew VERSION=1.2.3 BINDIR=/path/to/bin
+```
+
+Other `make` and GoReleaser builds read `Distribution` from the `DISTRIBUTION`
+variable, which is empty by default. The same value also sets kit's telemetry
+distribution.
 
 ## Project Structure
 

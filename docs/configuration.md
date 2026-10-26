@@ -2098,6 +2098,10 @@ Each event carries `install_age_hours`, the whole hours since the install ID was
 created, so short-lived installs such as test sandboxes can be filtered out.
 Installs created before roborev recorded that time send events without it.
 
+Each event also carries `distribution`, the channel that built the binary, such
+as `homebrew` or `kenn` for official direct downloads. It's empty for source
+builds.
+
 Telemetry does not include repo names, paths, remotes, prompts, review output,
 provider tokens, usernames, or IP geolocation. It's always off in CI. Disable it
 with any of these environment variables:
@@ -2110,7 +2114,9 @@ ROBOREV_TELEMETRY_ENABLED=0 roborev tui
 ROBOREV_TELEMETRY_ENABLED=0 roborev review
 ```
 
-Telemetry is disabled in Go test processes.
+Release builds, `make build`, and `make install` set the PostHog project key at
+link time. Plain `go build` and `go install` builds and Go test processes have
+no key and send no telemetry.
 
 ### Color Mode
 

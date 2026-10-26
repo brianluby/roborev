@@ -556,10 +556,15 @@ for unfinished reports. Finished reports add no delay. An unfinished report may
 be lost when the process exits. Telemetry alone never starts a daemon.
 Each event also carries `install_age_hours`, the whole hours since the install
 was created, so short-lived installs such as test sandboxes can be filtered out.
+Each event also carries `distribution`, the channel that built the binary, such
+as `homebrew` or `kenn` for official direct downloads. It's empty for source
+builds.
 It does not send repo names, paths, remotes, prompts, review output, provider
 tokens, usernames, or IP geolocation. Set `ROBOREV_TELEMETRY_ENABLED=0`,
 `TELEMETRY_ENABLED=0`, or `DO_NOT_TRACK=1` to disable it, then restart the
-daemon. Telemetry is always off in CI and inside Go test processes.
+daemon. Telemetry is always off in CI. Release builds, `make build`, and
+`make install` set the PostHog project key at link time. Plain `go build`,
+`go install`, and Go tests have no key and send no telemetry.
 
 ## Security Model
 
