@@ -55,6 +55,17 @@ All notable changes to roborev, grouped by minor release.
     Windows does by default for some PDF and Word files. The diff shows the file
     as binary instead.
 
+**Bug fixes**
+
+- The daemon keeps starting jobs when an agentsview token usage lookup hangs.
+    The lookup returns at its timeout even when a process agentsview started is
+    still running, and jobs no longer wait for it before they start. A job that
+    cannot start fails or retries at its job timeout instead of staying
+    `running` until it is canceled by hand.
+- On Windows, a timed-out agentsview lookup also terminates processes it
+    started, including grandchildren launched through Scoop shims. Successful
+    lookups can still start the agentsview server.
+
 ## 0.73.0
 
 <small>2026-10-23</small>
