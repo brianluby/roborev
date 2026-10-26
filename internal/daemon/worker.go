@@ -1272,6 +1272,16 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 		wp.failoverOrFailNonRetryableAgentContext(ctx, workerID, job, a.Name(), err.Error())
 		return
 	}
+	// A strict review starts a fresh session, and isolation keeps the session
+	// it captures from being resumed by later reviews.
+	if tools != nil && !checkout.isolatedLocalReview {
+		if err := wp.db.IsolateJobSession(job.ID, workerID); err != nil {
+			wp.failOrRetryContext(ctx, workerID, job, a.Name(), fmt.Sprintf("clear review session: %v", err))
+			return
+		}
+		job.SessionID = ""
+		job.ResumeSourceJobUUID = nil
+	}
 
 	// Use the actual agent name (may differ from requested if fallback occurred)
 	agentName := a.Name()
@@ -1320,6 +1330,11 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 	defer func() {
 		if err := jobLog.Close(); err != nil {
 			log.Printf("[%s] Warning: close job log for job %d: %v", workerID, job.ID, err)
+		}
+		// Strict Claude sessions are not saved, so read usage from the job log
+		// on every terminal path; failed attempts can still spend tokens.
+		if planningPrompt == "" && tools != nil && agentName == "claude-code" {
+			wp.captureSessionlessUsage(workerID, job, agentName)
 		}
 	}()
 	agentOutput := io.MultiWriter(jobLog, outputWriter)
@@ -1439,6 +1454,13 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 			defer preparedPrompt.Cleanup()
 		}
 		reviewPrompt = preparedPrompt.Prompt
+		preparedAgent, toolCleanup, toolErr := agent.PrepareReviewToolPolicy(a, tools)
+		if toolErr != nil {
+			wp.failOrRetryContext(ctx, workerID, job, agentName, fmt.Sprintf("prepare review tools: %v", toolErr))
+			return
+		}
+		defer toolCleanup()
+		a = preparedAgent
 		wp.markAgentInvoked(workerID, job, a)
 		if planningPrompt != "" {
 			implementationInvoked = true
@@ -1605,7 +1627,7 @@ func (wp *WorkerPool) processJob(workerID string, job *storage.ReviewJob) {
 		}
 		wp.autoClosePassingReview(workerID, job, verdict)
 
-		if planningPrompt == "" {
+		if planningPrompt == "" && (tools == nil || agentName != "claude-code") {
 			wp.captureTokenUsageForSession(context.Background(), workerID, job, sessionWriter.SessionID())
 		}
 		wp.invalidateBudgetSpend()
