@@ -38,6 +38,11 @@ All notable changes to roborev, grouped by minor release.
 - Reviews, reruns, and fixes start as soon as they are queued, instead of up to
     two seconds later.
 
+- Sync [Agent Hook](/docs/agent-hook/) configs across machines with
+    `--binary roborev` or `--binary roborev.exe`. Installation still checks
+    PATH, but keeps the bare name in hooks and the optional MCP stdio server
+    entry.
+
 **Bug fixes**
 
 - Read-only Claude reviews and panel synthesis no longer get write, shell, web,

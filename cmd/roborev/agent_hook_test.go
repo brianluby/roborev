@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,6 +39,69 @@ func TestAgentHookInstallSupportsExplicitQwenProfile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "agent-hook run --agent qwen")
 	assert.Contains(t, string(body), "--source=roborev-agent-hook")
+}
+
+func TestAgentHookInstallBareBinary(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		binary  string
+		missing bool
+		mcp     bool
+	}{
+		{name: "preserves bare roborev", binary: "roborev", mcp: true},
+		{name: "rejects missing roborev", binary: "roborev", missing: true},
+		{name: "resolves other bare binary", binary: "roborev-dev"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if !tc.missing {
+				dir = writeFakeAgentBinary(t, tc.binary)
+			}
+			t.Setenv("PATH", dir)
+			var binaryPath string
+			if tc.binary != "roborev" {
+				var err error
+				binaryPath, err = exec.LookPath(tc.binary)
+				require.NoError(t, err)
+			}
+			path := filepath.Join(t.TempDir(), "settings.json")
+			cmd := agentHookCmd()
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			args := []string{
+				"install", "--agent", "qwen", "--config", path,
+				"--binary", tc.binary,
+			}
+			if tc.mcp {
+				args = append(args, "--mcp")
+			}
+			cmd.SetArgs(args)
+
+			if tc.missing {
+				require.ErrorContains(t, cmd.Execute(), "find roborev on PATH")
+				return
+			}
+			require.NoError(t, cmd.Execute())
+			body, err := os.ReadFile(path)
+			require.NoError(t, err)
+			if tc.binary != "roborev" {
+				expectedPath, err := json.Marshal(binaryPath)
+				require.NoError(t, err)
+				assert.Contains(t, string(body), string(expectedPath[1:len(expectedPath)-1]))
+				return
+			}
+			var config struct {
+				MCPServers map[string]struct {
+					Command string `json:"command"`
+				} `json:"mcpServers"`
+			}
+			require.NoError(t, json.Unmarshal(body, &config))
+			assert := assert.New(t)
+			assert.Contains(string(body), `"roborev agent-hook run --agent qwen`)
+			assert.Equal("roborev", config.MCPServers["roborev"].Command)
+			assert.NotContains(string(body), dir)
+		})
+	}
 }
 
 func TestPostAgentHookPreservesRegularDaemonEndpointInOwnerCloseout(t *testing.T) {
