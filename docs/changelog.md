@@ -5,7 +5,15 @@ description: Release history for roborev
 
 All notable changes to roborev, grouped by minor release.
 
-## Unreleased
+## 0.74.0
+
+<small>2026-10-27</small>
+
+Set up a custom review by talking it through with your agent, review documents
+and the PDFs committed with them, and limit a review type to read-only tools
+plus the MCP tools you grant. Before updating, check the
+[0.74.0 upgrade steps](/docs/installation/#upgrading-to-0740) for the Claude
+Code requirement.
 
 **New features**
 
@@ -37,7 +45,6 @@ All notable changes to roborev, grouped by minor release.
 
 - Reviews, reruns, and fixes start as soon as they are queued, instead of up to
     two seconds later.
-
 - Sync [Agent Hook](/docs/agent-hook/) configs across machines with
     `--binary roborev` or `--binary roborev.exe`. Installation still checks
     PATH, but keeps the bare name in hooks and the optional MCP stdio server
@@ -63,9 +70,6 @@ All notable changes to roborev, grouped by minor release.
     patch on the tip of the review's branch. Before, a rebase for a
     single-commit review reused the reviewed commit, so the new patch conflicted
     again and each rebase repeated the same failure.
-
-**Bug fixes**
-
 - The daemon keeps starting jobs when an agentsview token usage lookup hangs.
     The lookup returns at its timeout even when a process agentsview started is
     still running, and jobs no longer wait for it before they start. A job that
@@ -74,15 +78,47 @@ All notable changes to roborev, grouped by minor release.
 - On Windows, a timed-out agentsview lookup also terminates processes it
     started, including grandchildren launched through Scoop shims. Successful
     lookups can still start the agentsview server.
-
-**Bug fixes**
-
 - Codex reviews work when the Codex login is stored in the OS keyring and
     `ignore_review_user_config = true`. roborev forwards
     `cli_auth_credentials_store` and the other login settings from the Codex
     user config. A missing Codex login now fails without retries and the error
     explains how to fix it. See
     [Codex login storage](/docs/configuration/#codex-login-storage).
+
+Thanks to everyone who contributed to this release:
+
+- [Jarek Potiuk](https://github.com/potiuk) fixed Codex reviews when the Codex
+    login is stored in the OS keyring in
+    [#1459](https://github.com/kenn-io/roborev/pull/1459).
+- [Marius van Niekerk](https://github.com/mariusvniekerk) added strict review
+    tool policies and MCP grants in
+    [#1461](https://github.com/kenn-io/roborev/pull/1461),
+    [#1462](https://github.com/kenn-io/roborev/pull/1462), and
+    [#1463](https://github.com/kenn-io/roborev/pull/1463), binary evidence in
+    [#1465](https://github.com/kenn-io/roborev/pull/1465), and document review
+    panels in [#1460](https://github.com/kenn-io/roborev/pull/1460); kept the
+    daemon starting jobs when a token usage lookup hangs in
+    [#1478](https://github.com/kenn-io/roborev/pull/1478); and fixed daemon
+    shutdown, per-repo `review_context_count`, failing text converters, and fix
+    patch rebases.
+- [Rod Boev](https://github.com/rodboev) started queued jobs immediately in
+    [#1456](https://github.com/kenn-io/roborev/pull/1456), kept daemon and TUI
+    runtime records correct inside sandboxes in
+    [#1435](https://github.com/kenn-io/roborev/pull/1435) and
+    [#1454](https://github.com/kenn-io/roborev/pull/1454), and made polling and
+    retry tests faster.
+- [Rusty Shackleford](https://github.com/salmonumbrella) added the
+    `/roborev-setup-review` skill in
+    [#1416](https://github.com/kenn-io/roborev/pull/1416), kept Claude reviewers
+    read-only when permissions are bypassed in
+    [#1406](https://github.com/kenn-io/roborev/pull/1406), and made Agent Hook
+    configs portable across machines in
+    [#1481](https://github.com/kenn-io/roborev/pull/1481).
+- [Wes McKinney](https://github.com/wesm) added package builds that turn off
+    self-update in [#1458](https://github.com/kenn-io/roborev/pull/1458),
+    documented the 0.73.0 release, and made TUI branch rendering tests reliable.
+
+______________________________________________________________________
 
 ## 0.73.0
 
